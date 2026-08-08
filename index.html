@@ -135,19 +135,23 @@
   </div>
 
   <script>
-    // -------------------------------------------------------------------
-    // 1. REPLACE THESE PLACEHOLDERS WITH YOUR ACTUAL KEYS:
-    // -------------------------------------------------------------------
-    const SUPABASE_URL = "https://qfedipjndplthmjozaro.supabase.co/rest/v1/";
-    const SUPABASE_ANON_KEY = "sb_publishable_N6BqBXToQV_L438OveNIow_rnB_aYOQ";
-    const FINNHUB_API_KEY = "https://d9rjvlpr01qoo7o4l9c0d9rjvlpr01qoo7o4l9cg"; // Free key from finnhub.io for stocks
+    // Embedded API Credentials
+    const SUPABASE_URL = "https://qfedipjndplthmjozaro.supabase.co".trim();
+    const SUPABASE_ANON_KEY = "sb_publishable_N6BqBXToQV_L4380veNIow_rnB_aYOQ".trim();
+    const FINNHUB_API_KEY = "d9rjvlpr01qoo7o419cg".trim();
 
-    const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    // Initialize Supabase Client safely
+    const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+      auth: {
+        autoRefreshToken: true,
+        persistSession: true,
+        detectSessionInUrl: false
+      }
+    });
 
     let assets = [];
     let chartInstance = null;
 
-    // Crypto name mapping for CoinGecko API
     const cryptoMap = {
       "btc": "bitcoin",
       "bitcoin": "bitcoin",
@@ -159,14 +163,12 @@
       "cardano": "cardano"
     };
 
-    // Authentication Elements
     const authOverlay = document.getElementById('authOverlay');
     const authForm = document.getElementById('authForm');
     const authError = document.getElementById('authError');
     const logoutBtn = document.getElementById('logoutBtn');
     const userBadge = document.getElementById('userBadge');
 
-    // Auth State Monitor
     supabaseClient.auth.onAuthStateChange((event, session) => {
       if (session) {
         authOverlay.style.display = 'none';
@@ -209,7 +211,6 @@
 
     logoutBtn.addEventListener('click', () => supabaseClient.auth.signOut());
 
-    // Database Read Operations
     async function fetchAssets() {
       const { data, error } = await supabaseClient.from('assets').select('*').order('created_at', { ascending: false });
       if (error) console.error(error);
@@ -219,7 +220,6 @@
       }
     }
 
-    // Database Create Operations
     document.getElementById('assetForm').addEventListener('submit', async (e) => {
       e.preventDefault();
       const newAsset = {
@@ -238,7 +238,6 @@
       }
     });
 
-    // Database Delete Operations
     async function deleteAsset(id) {
       const { error } = await supabaseClient.from('assets').delete().eq('id', id);
       if (error) alert(error.message);
@@ -248,7 +247,6 @@
       }
     }
 
-    // Live Price Updates (Crypto & Stocks)
     async function updateLivePrices() {
       const syncBtn = document.getElementById('syncPricesBtn');
       if (syncBtn) syncBtn.innerText = "Refreshing...";
@@ -256,7 +254,6 @@
       for (let asset of assets) {
         const cleanName = asset.name.toLowerCase().trim();
 
-        // 1. Crypto API (CoinGecko)
         if (asset.category === "Crypto") {
           const coinId = cryptoMap[cleanName] || cleanName;
           try {
@@ -271,8 +268,7 @@
           }
         }
 
-        // 2. Stock API (Finnhub)
-        if (asset.category === "Stocks" && FINNHUB_API_KEY && FINNHUB_API_KEY !== "YOUR_FINNHUB_API_KEY") {
+        if (asset.category === "Stocks" && FINNHUB_API_KEY) {
           try {
             const ticker = asset.name.toUpperCase().trim();
             const res = await fetch(`https://finnhub.io/api/v1/quote?symbol=${ticker}&token=${FINNHUB_API_KEY}`);
@@ -291,7 +287,6 @@
       if (syncBtn) syncBtn.innerText = "🔄 Sync Live Prices";
     }
 
-    // UI Rendering
     function renderUI() {
       let totInvested = 0, totCurrent = 0;
       const listEl = document.getElementById('assetList');
