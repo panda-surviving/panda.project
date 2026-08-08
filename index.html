@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Portfolio 360 - Cloud & Live API Sync</title>
+  <!-- Supabase JS Client & Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --card: #1e293b;
+      --accent: #38bdf8;
+      --green: #22c55e;
+      --text: #f8fafc;
+      --muted: #94a3b8;
+      --border: #334155;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    body { background-color: var(--bg); color: var(--text); padding: 20px; max-width: 1200px; margin: 0 auto; }
+    header { display: flex; justify-content: space-between; align-items: center; padding-bottom: 20px; border-bottom: 1px solid var(--border); margin-bottom: 24px; }
+    h1 { font-size: 1.5rem; color: var(--accent); }
+    .badge { background: rgba(56, 189, 248, 0.1); color: var(--accent); padding: 4px 12px; border-radius: 999px; font-size: 0.8rem; border: 1px solid var(--accent); }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px; margin-bottom: 24px; }
+    .card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 20px; }
+    .card label { color: var(--muted); font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.05em; }
+    .card .val { font-size: 1.8rem; font-weight: 700; margin-top: 8px; }
+    .card .green { color: var(--green); }
+    .dashboard-body { display: grid; grid-template-columns: 2fr 1fr; gap: 20px; }
+    @media (max-width: 768px) { .dashboard-body { grid-template-columns: 1fr; } }
+    form { display: grid; gap: 12px; margin-top: 10px; }
+    input, select, button { padding: 10px 14px; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; color: var(--text); font-size: 0.95rem; }
+    button { background: var(--accent); color: #000; font-weight: 600; cursor: pointer; border: none; }
+    button:hover { opacity: 0.9; }
+    .btn-secondary { background: transparent; color: var(--muted); border: 1px solid var(--border); }
+    .btn-secondary:hover { color: var(--text); border-color: var(--text); }
+    table { width: 100%; border-collapse: collapse; margin-top: 16px; font-size: 0.9rem; }
+    th, td { text-align: left; padding: 12px; border-bottom: 1px solid var(--border); }
+    th { color: var(--muted); font-weight: 500; }
+    .del-btn { background: #ef4444; color: white; padding: 4px 8px; font-size: 0.75rem; border-radius: 4px; }
+    
+    /* Auth Modal Overlay */
+    #authOverlay { position: fixed; inset: 0; background: rgba(15, 23, 42, 0.95); display: flex; align-items: center; justify-content: center; z-index: 999; }
+    .auth-box { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 32px; width: 100%; max-width: 400px; text-align: center; }
+  </style>
+</head>
+<body>
+
+  <!-- Auth Screen -->
+  <div id="authOverlay">
+    <div class="auth-box">
+      <h2 style="margin-bottom: 8px; color: var(--accent);">Portfolio 360</h2>
+      <p style="color: var(--muted); font-size: 0.9rem; margin-bottom: 20px;">Sign in to sync your investments across all your devices.</p>
+      <form id="authForm">
+        <input type="email" id="authEmail" placeholder="Your Email" required>
+        <input type="password" id="authPassword" placeholder="Password" required>
+        <button type="submit" id="loginBtn">Sign In</button>
+        <button type="button" class="btn-secondary" id="signupBtn">Create Free Account</button>
+      </form>
+      <div id="authError" style="color: #ef4444; font-size: 0.85rem; margin-top: 12px;"></div>
+    </div>
+  </div>
+
+  <header>
+    <h1>Portfolio 360</h1>
+    <div style="display: flex; gap: 10px; align-items: center;">
+      <span class="badge" id="userBadge">Not Authenticated</span>
+      <button class="btn-secondary" id="logoutBtn" style="padding: 6px 12px; font-size: 0.8rem; display: none;">Sign Out</button>
+    </div>
+  </header>
+
+  <section class="grid">
+    <div class="card">
+      <label>Total Net Worth</label>
+      <div class="val" id="totalNetWorth">$0.00</div>
+    </div>
+    <div class="card">
+      <label>Total Invested</label>
+      <div class="val" id="totalInvested">$0.00</div>
+    </div>
+    <div class="card">
+      <label>Total Profit / Loss</label>
+      <div class="val green" id="totalGain">$0.00</div>
+    </div>
+  </section>
+
+  <div class="dashboard-body">
+    <main>
+      <div class="card">
+        <h3>Add Investment</h3>
+        <form id="assetForm">
+          <input type="text" id="assetName" placeholder="Asset Ticker/Name (e.g., AAPL, BTC, TSLA)" required>
+          <select id="assetCategory">
+            <option value="Stocks">Stocks / ETFs</option>
+            <option value="Mutual Funds">Mutual Funds</option>
+            <option value="Crypto">Crypto</option>
+            <option value="Real Estate">Real Estate / Gold</option>
+          </select>
+          <div style="display: flex; gap: 10px;">
+            <input type="number" id="investedAmount" placeholder="Invested ($)" step="0.01" required style="width: 50%;">
+            <input type="number" id="currentValue" placeholder="Current Value ($)" step="0.01" required style="width: 50%;">
+          </div>
+          <button type="submit">+ Add to Portfolio</button>
+        </form>
+      </div>
+
+      <div class="card" style="margin-top: 20px;">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <h3>Your Assets</h3>
+          <button id="syncPricesBtn" onclick="updateLivePrices()" style="padding: 6px 12px; font-size: 0.85rem;">
+            🔄 Sync Live Prices
+          </button>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th>Asset</th>
+              <th>Type</th>
+              <th>Invested</th>
+              <th>Current</th>
+              <th>Return</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody id="assetList"></tbody>
+        </table>
+      </div>
+    </main>
+
+    <aside class="card">
+      <h3>Asset Allocation</h3>
+      <canvas id="allocationChart" style="margin-top: 20px;"></canvas>
+    </aside>
+  </div>
+
+  <script>
+    // -------------------------------------------------------------------
+    // 1. REPLACE THESE PLACEHOLDERS WITH YOUR ACTUAL KEYS:
+    // -------------------------------------------------------------------
+    const SUPABASE_URL = "https://qfedipjndplthmjozaro.supabase.co/rest/v1/";
+    const SUPABASE_ANON_KEY = "sb_publishable_N6BqBXToQV_L438OveNIow_rnB_aYOQ";
+    const FINNHUB_API_KEY = "d9rjvlpr01qoo7o4l9c0d9rjvlpr01qoo7o4l9cg"; // Free key from finnhub.io for stocks
+
+    const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    let assets = [];
+    let chartInstance = null;
+
+    // Crypto name mapping for CoinGecko API
+    const cryptoMap = {
+      "btc": "bitcoin",
+      "bitcoin": "bitcoin",
+      "eth": "ethereum",
+      "ethereum": "ethereum",
+      "sol": "solana",
+      "solana": "solana",
+      "ada": "cardano",
+      "cardano": "cardano"
+    };
+
+    // Authentication Elements
+    const authOverlay = document.getElementById('authOverlay');
+    const authForm = document.getElementById('authForm');
+    const authError = document.getElementById('authError');
+    const logoutBtn = document.getElementById('logoutBtn');
+    const userBadge = document.getElementById('userBadge');
+
+    // Auth State Monitor
+    supabaseClient.auth.onAuthStateChange((event, session) => {
+      if (session) {
+        authOverlay.style.display = 'none';
+        logoutBtn.style.display = 'block';
+        userBadge.innerText = session.user.email;
+        fetchAssets();
+      } else {
+        authOverlay.style.display = 'flex';
+        logoutBtn.style.display = 'none';
+        userBadge.innerText = 'Not Authenticated';
+        assets = [];
+        renderUI();
+      }
+    });
+
+    authForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      authError.innerText = '';
+      const email = document.getElementById('authEmail').value;
+      const password = document.getElementById('authPassword').value;
+
+      const { error } = await supabaseClient.auth.signInWithPassword({ email, password });
+      if (error) authError.innerText = error.message;
+    });
+
+    document.getElementById('signupBtn').addEventListener('click', async () => {
+      authError.innerText = '';
+      const email = document.getElementById('authEmail').value;
+      const password = document.getElementById('authPassword').value;
+
+      if (!email || !password) {
+        authError.innerText = "Please enter an email and password.";
+        return;
+      }
+
+      const { error } = await supabaseClient.auth.signUp({ email, password });
+      if (error) authError.innerText = error.message;
+      else authError.innerText = "Account created! You can now Sign In.";
+    });
+
+    logoutBtn.addEventListener('click', () => supabaseClient.auth.signOut());
+
+    // Database Read Operations
+    async function fetchAssets() {
+      const { data, error } = await supabaseClient.from('assets').select('*').order('created_at', { ascending: false });
+      if (error) console.error(error);
+      else {
+        assets = data || [];
+        renderUI();
+      }
+    }
+
+    // Database Create Operations
+    document.getElementById('assetForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const newAsset = {
+        name: document.getElementById('assetName').value,
+        category: document.getElementById('assetCategory').value,
+        invested: parseFloat(document.getElementById('investedAmount').value),
+        current: parseFloat(document.getElementById('currentValue').value)
+      };
+
+      const { data, error } = await supabaseClient.from('assets').insert([newAsset]).select();
+      if (error) alert(error.message);
+      else {
+        assets.unshift(data[0]);
+        renderUI();
+        document.getElementById('assetForm').reset();
+      }
+    });
+
+    // Database Delete Operations
+    async function deleteAsset(id) {
+      const { error } = await supabaseClient.from('assets').delete().eq('id', id);
+      if (error) alert(error.message);
+      else {
+        assets = assets.filter(a => a.id !== id);
+        renderUI();
+      }
+    }
+
+    // Live Price Updates (Crypto & Stocks)
+    async function updateLivePrices() {
+      const syncBtn = document.getElementById('syncPricesBtn');
+      if (syncBtn) syncBtn.innerText = "Refreshing...";
+
+      for (let asset of assets) {
+        const cleanName = asset.name.toLowerCase().trim();
+
+        // 1. Crypto API (CoinGecko)
+        if (asset.category === "Crypto") {
+          const coinId = cryptoMap[cleanName] || cleanName;
+          try {
+            const res = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${coinId}&vs_currencies=usd`);
+            const data = await res.json();
+            if (data[coinId] && data[coinId].usd) {
+              asset.current = data[coinId].usd;
+              await supabaseClient.from('assets').update({ current: asset.current }).eq('id', asset.id);
+            }
+          } catch (err) {
+            console.error(`Error fetching crypto price for ${asset.name}:`, err);
+          }
+        }
+
+        // 2. Stock API (Finnhub)
+        if (asset.category === "Stocks" && FINNHUB_API_KEY && FINNHUB_API_KEY !== "YOUR_FINNHUB_API_KEY") {
+          try {
+            const ticker = asset.name.toUpperCase().trim();
+            const res = await fetch(`https://finnhub.io/api/v1/quote?symbol=${ticker}&token=${FINNHUB_API_KEY}`);
+            const data = await res.json();
+            if (data.c && data.c > 0) {
+              asset.current = data.c;
+              await supabaseClient.from('assets').update({ current: asset.current }).eq('id', asset.id);
+            }
+          } catch (err) {
+            console.error(`Error fetching stock price for ${asset.name}:`, err);
+          }
+        }
+      }
+
+      renderUI();
+      if (syncBtn) syncBtn.innerText = "🔄 Sync Live Prices";
+    }
+
+    // UI Rendering
+    function renderUI() {
+      let totInvested = 0, totCurrent = 0;
+      const listEl = document.getElementById('assetList');
+      listEl.innerHTML = '';
+      const catTotals = {};
+
+      assets.forEach(a => {
+        totInvested += Number(a.invested);
+        totCurrent += Number(a.current);
+        catTotals[a.category] = (catTotals[a.category] || 0) + Number(a.current);
+
+        const gain = a.current - a.invested;
+        const gainPct = a.invested > 0 ? ((gain / a.invested) * 100).toFixed(1) : 0;
+
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td><b>${a.name}</b></td>
+          <td>${a.category}</td>
+          <td>$${Number(a.invested).toLocaleString()}</td>
+          <td>$${Number(a.current).toLocaleString()}</td>
+          <td style="color: ${gain >= 0 ? '#22c55e' : '#ef4444'}">${gain >= 0 ? '+' : ''}$${gain.toLocaleString()} (${gainPct}%)</td>
+          <td><button class="del-btn" onclick="deleteAsset(${a.id})">Delete</button></td>
+        `;
+        listEl.appendChild(tr);
+      });
+
+      document.getElementById('totalNetWorth').innerText = `$${totCurrent.toLocaleString('en-US', {minimumFractionDigits: 2})}`;
+      document.getElementById('totalInvested').innerText = `$${totInvested.toLocaleString('en-US', {minimumFractionDigits: 2})}`;
+      
+      const netGain = totCurrent - totInvested;
+      const netGainEl = document.getElementById('totalGain');
+      netGainEl.innerText = `${netGain >= 0 ? '+' : ''}$${netGain.toLocaleString('en-US', {minimumFractionDigits: 2})}`;
+      netGainEl.style.color = netGain >= 0 ? 'var(--green)' : '#ef4444';
+
+      renderChart(catTotals);
+    }
+
+    function renderChart(catTotals) {
+      const ctx = document.getElementById('allocationChart').getContext('2d');
+      if (chartInstance) chartInstance.destroy();
+
+      chartInstance = new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+          labels: Object.keys(catTotals),
+          datasets: [{
+            data: Object.values(catTotals),
+            backgroundColor: ['#38bdf8', '#22c55e', '#a855f7', '#f59e0b']
+          }]
+        },
+        options: { plugins: { legend: { labels: { color: '#f8fafc' } } } }
+      });
+    }
+  </script>
+</body>
+</html>
+
